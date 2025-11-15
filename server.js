@@ -86,15 +86,7 @@ app.get("/get-token", async (req, res) => {
         res.status(500).json({ error: "Database error" });
     }
 });
-// ------------------ TEMP FIX: DROP BAD COLUMN ------------------
-(async () => {
-    try {
-        await db.query(`ALTER TABLE link_request DROP COLUMN IF EXISTS creat_at;`);
-        console.log("✔ Column creat_at removed");
-    } catch (err) {
-        console.error("❌ Error removing creat_at:", err);
-    }
-})();
+
 // ------------------ START SERVER ------------------
 app.listen(PORT, () => {
     console.log("Server running on port " + PORT);
