@@ -14,6 +14,7 @@ const PORT = process.env.PORT || 8080;
 const SPOTIFY_REDIRECT_URI = process.env.REDIRECT_URI;
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 
 if (!SPOTIFY_REDIRECT_URI || !CLIENT_ID || !CLIENT_SECRET) {
     console.warn("Missing Spotify OAuth environment variables.");
@@ -41,17 +42,19 @@ app.get("/callback", async (req, res) => {
     }
 
     try {
-        const tokenResponse = await axios.post(
-            "https://accounts.spotify.com/api/token",
-            new URLSearchParams({
-                grant_type: "authorization_code",
-                code,
-                redirect_uri: SPOTIFY_REDIRECT_URI,
-                client_id: CLIENT_ID,
-                client_secret: CLIENT_SECRET,
-            }),
-            { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-        );
+        const basicAuthToken = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
+        const formData = new URLSearchParams({
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: SPOTIFY_REDIRECT_URI,
+        });
+
+        const tokenResponse = await axios.post(SPOTIFY_TOKEN_URL, formData, {
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                Authorization: `Basic ${basicAuthToken}`,
+            },
+        });
 
         const { access_token, refresh_token } = tokenResponse.data;
 
@@ -84,4 +87,7 @@ app.get("/get-token", async (req, res) => {
     }
 });
 
-app.listen(PORT, () => console.log("Server running on port " + PORT));
+// ------------------ START SERVER ------------------
+app.listen(PORT, () => {
+    console.log("Server running on port " + PORT);
+});
