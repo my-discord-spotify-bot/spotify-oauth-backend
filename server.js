@@ -140,3 +140,30 @@ app.post("/refresh-token", async (req, res) => {
 app.listen(PORT, () => {
     console.log("Server running on port " + PORT);
 });
+
+/* ------------------ UPDATE ACCOUNT ------------------ */
+app.post("/update-account", async (req, res) => {
+    const { userId, access_token } = req.body;
+
+    if (!userId || !access_token) {
+        return res.status(400).json({ error: "Missing userId or access_token" });
+    }
+
+    try {
+        // Met à jour le token dans la table link_request
+        const result = await db.query(
+            "UPDATE link_request SET access_token = $1 WHERE code = $2 RETURNING *",
+            [access_token, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error("Error updating account:", error);
+        res.status(500).json({ error: "Failed to update account" });
+    }
+});
+
