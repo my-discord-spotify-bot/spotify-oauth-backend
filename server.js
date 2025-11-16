@@ -20,10 +20,11 @@ if (!SPOTIFY_REDIRECT_URI || !CLIENT_ID || !CLIENT_SECRET) {
     console.warn("Missing Spotify OAuth environment variables.");
 }
 
-// ------------------ LOGIN ------------------
+/* ------------------ LOGIN ------------------ */
 app.get("/login", (req, res) => {
-    const state = req.query.state || ""; // ex: Discord user ID
-    const scope = "user-read-private user-read-email";
+    const state = req.query.state || "";
+    const scope = "user-read-private user-read-email user-read-playback-state user-modify-playback-state";
+
     const redirect =
         "https://accounts.spotify.com/authorize" +
         `?client_id=${CLIENT_ID}` +
@@ -35,10 +36,10 @@ app.get("/login", (req, res) => {
     res.redirect(redirect);
 });
 
-// ------------------ CALLBACK ------------------
+/* ------------------ CALLBACK ------------------ */
 app.get("/callback", async (req, res) => {
     const code = req.query.code;
-    const state = req.query.state; // contiendra l'ID Discord si passé depuis /login
+    const state = req.query.state;
 
     if (!code) {
         return res.status(400).send("Missing authorization code");
@@ -46,6 +47,7 @@ app.get("/callback", async (req, res) => {
 
     try {
         const basicAuthToken = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
+
         const formData = new URLSearchParams({
             grant_type: "authorization_code",
             code,
@@ -61,7 +63,6 @@ app.get("/callback", async (req, res) => {
 
         const { access_token, refresh_token } = tokenResponse.data;
 
-        // On utilise state (Discord user id) comme "code" de liaison
         const linkCode = state || code;
 
         await db.query(
@@ -76,16 +77,20 @@ app.get("/callback", async (req, res) => {
     }
 });
 
-// ------------------ GET TOKEN ------------------
+/* ------------------ GET TOKEN ------------------ */
 app.get("/get-token", async (req, res) => {
     const code = req.query.code;
     if (!code) return res.status(400).json({ error: "Missing ?code" });
+
     try {
         const result = await db.query(
             "SELECT access_token, refresh_token FROM link_request WHERE code = $1 ORDER BY id DESC LIMIT 1",
             [code]
         );
-        if (result.rows.length === 0) return res.status(404).json({ error: "Code not found" });
+
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: "Code not found" });
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -93,7 +98,45 @@ app.get("/get-token", async (req, res) => {
     }
 });
 
-// ------------------ START SERVER ------------------
+/* ------------------ REFRESH TOKEN ------------------ */
+app.post("/refresh-token", async (req, res) => {
+    const { refresh_token } = req.body;
+
+    if (!refresh_token) {
+        return res.status(400).json({ error: "Missing refresh_token" });
+    }
+
+    try {
+        const basicAuthToken = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
+
+        const payload = new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token,
+        });
+
+        const { data } = await axios.post(
+            "https://accounts.spotify.com/api/token",
+            payload,
+            {
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    Authorization: `Basic ${basicAuthToken}`,
+                },
+            }
+        );
+
+        if (!data.access_token) {
+            return res.status(502).json({ error: "Spotify did not return an access token" });
+        }
+
+        res.json({ access_token: data.access_token });
+    } catch (error) {
+        console.error("Refresh token error:", error.response?.data || error);
+        res.status(500).json({ error: "Failed to refresh token" });
+    }
+});
+
+/* ------------------ START SERVER ------------------ */
 app.listen(PORT, () => {
     console.log("Server running on port " + PORT);
 });
